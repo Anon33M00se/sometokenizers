@@ -29,6 +29,8 @@ async fn main() -> Result<()> {
     let attention_mask = encoding.get_attention_mask();
     let type_ids = encoding.get_type_ids();
     let offsets = encoding.get_offsets();
+    let special_tokens_mask = encoding.get_special_tokens_mask();
+    let overflowing = encoding.get_overflowing();
 
     println!("📊 OUTPUT SHAPES AND TYPES:");
     println!("  tokens: Vec<String> with length {}", tokens.len());
@@ -51,13 +53,26 @@ async fn main() -> Result<()> {
     println!("    └─ Shape: [{}]", type_ids.len());
     println!("    └─ Values: {:?}", type_ids);
     
+    println!("  special_tokens_mask: &[u32] with length {}", special_tokens_mask.len());
+    println!("    └─ Type: &[u32]");
+    println!("    └─ Shape: [{}]", special_tokens_mask.len());
+    println!("    └─ Values: {:?}", special_tokens_mask);
+    println!("    └─ Meaning: 1=special token, 0=regular token");
+    
     println!("  offsets: &[(usize, usize)] with length {}", offsets.len());
     println!("    └─ Type: &[(usize, usize)]");
     println!("    └─ Shape: [{}]", offsets.len());
     
+    println!("  overflowing: Vec<Encoding> with length {}", overflowing.len());
+    println!("    └─ Type: Vec<Encoding>");
+    println!("    └─ Shape: [{}]", overflowing.len());
+    println!("    └─ Content: {} overflowing encodings", overflowing.len());
+    println!("    └─ Meaning: Additional tokens when input exceeds max length");
+    
     println!("\n📝 RAW OUTPUT VALUES:");
     println!("  Tokens: {:?}", tokens);
     println!("  Token IDs: {:?}", token_ids);
+    println!("  Special tokens mask: {:?}", special_tokens_mask);
     println!("  Total tokens: {}", encoding.len());
     
     // Show statistics
@@ -70,19 +85,21 @@ async fn main() -> Result<()> {
     println!("  Average token length: {:.2} characters", avg_token_len);
     println!("  Vocabulary compression: {:.1}% (original: {} chars, tokens: {})", 
              (tokens.len() as f32 / text.len() as f32) * 100.0, text.len(), tokens.len());
+    println!("  Special tokens count: {}", special_tokens_mask.iter().sum::<u32>());
+    println!("  Regular tokens count: {}", special_tokens_mask.len() as u32 - special_tokens_mask.iter().sum::<u32>());
     
-    // Show token-by-token breakdown with offsets
+    // Show token-by-token breakdown with offsets and special token info
     println!("\n🔍 TOKEN-BY-TOKEN BREAKDOWN:");
-    for (i, ((token, id), (start, end))) in tokens.iter().zip(token_ids.iter()).zip(offsets.iter()).enumerate() {
-        let original_text = if token == "[CLS]" || token == "[SEP]" {
-            "[special]"
+    for (i, (((token, id), (start, end)), is_special)) in tokens.iter().zip(token_ids.iter()).zip(offsets.iter()).zip(special_tokens_mask.iter()).enumerate() {
+        let (original_text, token_type) = if *is_special == 1 {
+            ("[special]", "SPECIAL")
         } else if *start < text.len() && *end <= text.len() && start <= end {
-            &text[*start..*end]
+            (&text[*start..*end], "REGULAR")
         } else {
-            "[unknown]"
+            ("[unknown]", "UNKNOWN")
         };
-        println!("  [{:2}] '{}' -> ID:{:5} | offset:({:2},{:2}) | orig:'{}'", 
-                 i, token, id, start, end, original_text);
+        println!("  [{:2}] '{}' -> ID:{:5} | offset:({:2},{:2}) | type:{:7} | orig:'{}'", 
+                 i, token, id, start, end, token_type, original_text);
     }
     
     // Show comparison with/without special tokens
