@@ -3,6 +3,8 @@ use tokenizers::tokenizer::{Result, Tokenizer};
 
 #[tokio::main]
 async fn main() -> Result<()> {
+    println!("Loading bert-base-uncased tokenizer from Hugging Face...");
+    
     let api = Api::new().unwrap();
     let repo = api.model("bert-base-uncased".to_string());
     let tokenizer_filename = repo
@@ -13,11 +15,14 @@ async fn main() -> Result<()> {
     println!("Downloaded tokenizer to: {:?}", tokenizer_filename);
     let tokenizer = Tokenizer::from_file(&tokenizer_filename)?;
     println!("✓ Successfully loaded tokenizer!");
+    
     let text = "The rain, in Spain, falls mainly on the plain.";
     println!("\nInput text: {}", text);
-    // Tokenize the text
-    let encoding = tokenizer.encode(text, false)?;
-    println!("\n=== TOKENIZER OUTPUT ANALYSIS ===");
+    
+    // Tokenize the text WITH special tokens to match Python behavior
+    let encoding = tokenizer.encode(text, true)?; // true = add_special_tokens
+    
+    println!("\n=== TOKENIZER OUTPUT ANALYSIS (WITH SPECIAL TOKENS) ===");
     // Show detailed type and shape information
     let tokens = encoding.get_tokens();
     let token_ids = encoding.get_ids();
@@ -69,14 +74,30 @@ async fn main() -> Result<()> {
     // Show token-by-token breakdown with offsets
     println!("\n🔍 TOKEN-BY-TOKEN BREAKDOWN:");
     for (i, ((token, id), (start, end))) in tokens.iter().zip(token_ids.iter()).zip(offsets.iter()).enumerate() {
-        let original_text = if *start < text.len() && *end <= text.len() && start <= end {
+        let original_text = if token == "[CLS]" || token == "[SEP]" {
+            "[special]"
+        } else if *start < text.len() && *end <= text.len() && start <= end {
             &text[*start..*end]
         } else {
-            "[special]"
+            "[unknown]"
         };
         println!("  [{:2}] '{}' -> ID:{:5} | offset:({:2},{:2}) | orig:'{}'", 
                  i, token, id, start, end, original_text);
     }
+    
+    // Show comparison with/without special tokens
+    println!("\n🔄 COMPARISON WITH/WITHOUT SPECIAL TOKENS:");
+    let encoding_no_special = tokenizer.encode(text, false)?;
+    println!("  With special tokens: {} tokens", encoding.len());
+    println!("  Without special tokens: {} tokens", encoding_no_special.len());
+    println!("  Special tokens added: [CLS] at start, [SEP] at end");
+    
+    // Decode test to match Python versions
+    let decoded = tokenizer.decode(token_ids, true)?; // skip_special_tokens = true
+    println!("\n📤 DECODE TEST:");
+    println!("  Original: '{}'", text);
+    println!("  Decoded: '{}'", decoded);
+    println!("  Round-trip match: {}", text.to_lowercase() == decoded.to_lowercase());
     
     Ok(())
 }
